@@ -1,15 +1,16 @@
 package com.ecommerce.backend.service.impl;
 
-import com.ecommerce.backend.dto.CartDTO;
 import com.ecommerce.backend.entity.Cart;
 import com.ecommerce.backend.entity.CartItem;
 import com.ecommerce.backend.entity.Product;
 import com.ecommerce.backend.entity.User;
-import com.ecommerce.backend.repository.CartItemRepository;
 import com.ecommerce.backend.repository.CartRepository;
+import com.ecommerce.backend.repository.CartItemRepository;
 import com.ecommerce.backend.repository.ProductRepository;
+import com.ecommerce.backend.repository.UserRepository;
 import com.ecommerce.backend.service.CartService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -17,54 +18,75 @@ import java.util.Optional;
 public class CartServiceImpl implements CartService {
 
     private final CartRepository cartRepository;
-    private final CartItemRepository cartItemRepository;
+    private final UserRepository userRepository;
     private final ProductRepository productRepository;
+    private final CartItemRepository cartItemRepository;
 
-    public CartServiceImpl(CartRepository cartRepository,
-                           CartItemRepository cartItemRepository,
-                           ProductRepository productRepository) {
+    public CartServiceImpl(CartRepository cartRepository, UserRepository userRepository,
+                           ProductRepository productRepository, CartItemRepository cartItemRepository) {
         this.cartRepository = cartRepository;
-        this.cartItemRepository = cartItemRepository;
+        this.userRepository = userRepository;
         this.productRepository = productRepository;
+        this.cartItemRepository = cartItemRepository;
     }
 
     @Override
-    public Cart addItemToCart(User user, CartDTO dto) {
-        // Fetch cart or create a new one
-        Cart cart = cartRepository.findByUser(user).orElse(new Cart(user));
+    @Transactional
+    public Cart addItemToCart(Long userId, Long productId, int quantity) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Fetch product
-        Product product = productRepository.findById(dto.getProductId())
+        Cart cart = user.getCart();
+        if (cart == null) {
+            cart = new Cart(user);
+            user.setCart(cart);
+            cartRepository.save(cart); // save cart first
+        }
+
+        Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
 
-        // Check if product already exists in cart
+        // Check if item already exists in cart
         Optional<CartItem> existingItem = cart.getItems().stream()
-                .filter(item -> item.getProduct().getId().equals(product.getId()))
+                .filter(item -> item.getProduct().getId().equals(productId))
                 .findFirst();
 
         if (existingItem.isPresent()) {
             CartItem item = existingItem.get();
-            item.setQuantity(item.getQuantity() + dto.getQuantity());
+            item.setQuantity(item.getQuantity() + quantity);
+            item.setPrice(item.getQuantity() * product.getPrice());
             cartItemRepository.save(item);
         } else {
-            CartItem item = new CartItem(cart, product, dto.getQuantity());
-            cart.getItems().add(item);
-            cartItemRepository.save(item);
+            CartItem newItem = new CartItem();
+            newItem.setCart(cart);
+            newItem.setProduct(product);
+            newItem.setQuantity(quantity);
+            newItem.setPrice(quantity * product.getPrice());
+            cart.getItems().add(newItem);
+            cartItemRepository.save(newItem);
         }
 
-        // Recalculate total price
-        double totalPrice = cart.getItems().stream()
-                .mapToDouble(i -> i.getProduct().getPrice() * i.getQuantity())
+        // Update cart total price
+        double total = cart.getItems().stream()
+                .mapToDouble(CartItem::getPrice) // Correct getter
                 .sum();
-        cart.setTotalPrice(totalPrice);
+        cart.setTotalPrice(total);
 
         return cartRepository.save(cart);
     }
 
     @Override
-    public Cart getCartByUser(User user) {
-        // Fetch existing cart or return new cart without persisting
-        return cartRepository.findByUser(user)
-                .orElseGet(() -> new Cart(user));
+    public Cart getCartByUserId(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Cart cart = user.getCart();
+        if (cart == null) {
+            cart = new Cart(user);
+            user.setCart(cart);
+            cartRepository.save(cart);
+        }
+
+        return cart;
     }
 }

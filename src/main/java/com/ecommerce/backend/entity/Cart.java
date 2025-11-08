@@ -27,6 +27,7 @@ public class Cart {
     private double totalPrice;
 
     public Cart() {}
+
     public Cart(User user) { this.user = user; }
 
     public Long getId() { return id; }

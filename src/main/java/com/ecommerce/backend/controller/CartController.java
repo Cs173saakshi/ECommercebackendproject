@@ -1,40 +1,45 @@
 package com.ecommerce.backend.controller;
 
-import com.ecommerce.backend.dto.CartDTO;
 import com.ecommerce.backend.entity.Cart;
-import com.ecommerce.backend.entity.User;
 import com.ecommerce.backend.service.CartService;
-import com.ecommerce.backend.service.UserService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
-
 @RestController
 @RequestMapping("/api/cart")
 public class CartController {
 
     private final CartService cartService;
-    private final UserService userService;
 
-    public CartController(CartService cartService, UserService userService) {
+    public CartController(CartService cartService) {
         this.cartService = cartService;
-        this.userService = userService;
     }
 
     @PostMapping("/add")
-    @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<Cart> addItem(@AuthenticationPrincipal UserDetails userDetails,
-                                        @RequestBody CartDTO dto) {
-        User user = userService.findByUsername(userDetails.getUsername());
-        return ResponseEntity.ok(cartService.addItemToCart(user, dto));
+    public ResponseEntity<Cart> addToCart(@RequestBody CartRequest request) {
+        Cart cart = cartService.addItemToCart(request.getUserId(), request.getProductId(), request.getQuantity());
+        return ResponseEntity.ok(cart);
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<Cart> getCart(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = userService.findByUsername(userDetails.getUsername());
-        return ResponseEntity.ok(cartService.getCartByUser(user));
+    public ResponseEntity<Cart> getCart(@RequestParam(required = false) Long userId) {
+        if (userId == null) {
+            return ResponseEntity.badRequest().body(null);
+        }
+        Cart cart = cartService.getCartByUserId(userId);
+        return ResponseEntity.ok(cart);
     }
+}
+
+
+class CartRequest {
+    private Long userId;
+    private Long productId;
+    private int quantity;
+
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
+    public Long getProductId() { return productId; }
+    public void setProductId(Long productId) { this.productId = productId; }
+    public int getQuantity() { return quantity; }
+    public void setQuantity(int quantity) { this.quantity = quantity; }
 }
